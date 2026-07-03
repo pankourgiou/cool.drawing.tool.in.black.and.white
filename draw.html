@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI DRAW // NO API</title>
+<style>
+  :root{
+    --bg:#ffffff;
+    --ink:#000000;
+    --line:#111111;
+    --muted:#6e6e6e;
+    --grid:#e6e6e6;
+    --panel:#ffffff;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; height:100%;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Courier New', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+    overflow:hidden;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  #app{
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+    width:100vw;
+  }
+
+  /* ---------- HEADER ---------- */
+  header{
+    border-bottom:2px solid var(--ink);
+    padding:10px 16px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-shrink:0;
+    gap:12px;
+  }
+  .brand{
+    font-weight:700;
+    letter-spacing:0.18em;
+    font-size:13px;
+    white-space:nowrap;
+  }
+  .brand small{
+    display:block;
+    font-weight:400;
+    letter-spacing:0.12em;
+    color:var(--muted);
+    font-size:9px;
+    margin-top:2px;
+  }
+
+  /* ---------- SCOPE (signature element) ---------- */
+  #scope{
+    flex:1;
+    height:34px;
+    max-width:520px;
+    border:1px solid var(--ink);
+    position:relative;
+    background:
+      repeating-linear-gradient(to right, var(--grid) 0 1px, transparent 1px 20px),
+      repeating-linear-gradient(to bottom, var(--grid) 0 1px, transparent 1px 17px);
+  }
+  #scopeCanvas{ display:block; width:100%; height:100%; }
+  .scope-label{
+    position:absolute; top:2px; left:4px;
+    font-size:8px; letter-spacing:0.1em; color:var(--muted);
+    pointer-events:none;
+  }
+
+  .stat{
+    font-size:9px;
+    letter-spacing:0.08em;
+    color:var(--muted);
+    text-align:right;
+    white-space:nowrap;
+  }
+  .stat b{ color:var(--ink); font-weight:700; }
+
+  /* ---------- MAIN ---------- */
+  main{
+    flex:1;
+    position:relative;
+    overflow:hidden;
+    background:var(--bg);
+  }
+  #canvasWrap{
+    position:absolute; inset:0;
+  }
+  canvas#draw{
+    position:absolute; top:0; left:0;
+    cursor:crosshair;
+    touch-action:none;
+  }
+
+  /* ---------- FOOTER / CONTROLS ---------- */
+  footer{
+    border-top:2px solid var(--ink);
+    padding:10px 16px 12px;
+    flex-shrink:0;
+    display:flex;
+    flex-wrap:wrap;
+    gap:22px;
+    align-items:flex-end;
+    background:var(--panel);
+  }
+  .ctrl{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    min-width:110px;
+  }
+  .ctrl label{
+    font-size:9px;
+    letter-spacing:0.14em;
+    color:var(--muted);
+    display:flex;
+    justify-content:space-between;
+  }
+  .ctrl label span.val{ color:var(--ink); font-weight:700; }
+
+  input[type=range]{
+    -webkit-appearance:none;
+    width:100%;
+    height:2px;
+    background:var(--ink);
+    outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    width:12px; height:12px;
+    background:var(--ink);
+    border-radius:0;
+    cursor:pointer;
+    border:2px solid var(--bg);
+    box-shadow:0 0 0 1px var(--ink);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:12px; height:12px;
+    background:var(--ink);
+    border-radius:0;
+    cursor:pointer;
+    border:2px solid var(--bg);
+    box-shadow:0 0 0 1px var(--ink);
+  }
+
+  .modes{
+    display:flex;
+    gap:0;
+    border:1px solid var(--ink);
+  }
+  .modes button{
+    border:none;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:inherit;
+    font-size:9px;
+    letter-spacing:0.1em;
+    padding:8px 10px;
+    cursor:pointer;
+    border-right:1px solid var(--ink);
+  }
+  .modes button:last-child{ border-right:none; }
+  .modes button.active{ background:var(--ink); color:var(--bg); }
+
+  .actions{ display:flex; gap:8px; margin-left:auto; }
+  .actions button{
+    border:1px solid var(--ink);
+    background:var(--bg);
+    color:var(--ink);
+    font-family:inherit;
+    font-size:9px;
+    letter-spacing:0.1em;
+    padding:9px 14px;
+    cursor:pointer;
+    transition:background .1s, color .1s;
+  }
+  .actions button:hover{ background:var(--ink); color:var(--bg); }
+  .actions button:active{ transform:translateY(1px); }
+  .actions button.primary{ background:var(--ink); color:var(--bg); }
+  .actions button.primary:hover{ background:var(--bg); color:var(--ink); }
+
+  @media (max-width:760px){
+    #scope{ display:none; }
+    header{ justify-content:space-between; }
+    footer{ gap:14px; }
+    .ctrl{ min-width:90px; }
+    .actions{ width:100%; margin-left:0; justify-content:space-between; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="brand">AI DRAW <small>NO API · MONOCHROME · RUNS LOCALLY</small></div>
+    <div id="scope">
+      <span class="scope-label">SIGNAL</span>
+      <canvas id="scopeCanvas"></canvas>
+    </div>
+    <div class="stat">STROKES <b id="strokeCount">0</b><br>MODE <b id="modeLabel">PEN</b></div>
+  </header>
+
+  <main>
+    <div id="canvasWrap">
+      <canvas id="draw"></canvas>
+    </div>
+  </main>
+
+  <footer>
+    <div class="ctrl">
+      <label>BRUSH <span class="val" id="sizeVal">4</span></label>
+      <input type="range" id="sizeSlider" min="1" max="40" value="4">
+    </div>
+
+    <div class="ctrl">
+      <label>SYMMETRY <span class="val" id="symVal">1</span></label>
+      <input type="range" id="symSlider" min="1" max="12" value="1">
+    </div>
+
+    <div class="ctrl">
+      <label>NOISE <span class="val" id="noiseVal">30</span></label>
+      <input type="range" id="noiseSlider" min="0" max="100" value="30">
+    </div>
+
+    <div class="ctrl">
+      <label style="margin-bottom:2px;">MODE</label>
+      <div class="modes">
+        <button data-mode="pen" class="active">PEN</button>
+        <button data-mode="flow">FLOW</button>
+        <button data-mode="mirror">MIRROR</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="generateBtn">GENERATE ▸</button>
+      <button id="undoBtn">UNDO</button>
+      <button id="clearBtn">CLEAR</button>
+      <button id="saveBtn" class="primary">SAVE PNG</button>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------------- CANVAS SETUP ----------------
+  const canvas = document.getElementById('draw');
+  const ctx = canvas.getContext('2d');
+  const wrap = document.getElementById('canvasWrap');
+
+  function resizeCanvas(preserve){
+    const old = preserve ? canvas.toDataURL() : null;
+    const rect = wrap.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0,0,rect.width,rect.height);
+    ctx.lineCap='round';
+    ctx.lineJoin='round';
+    if(old){
+      const img = new Image();
+      img.onload=()=>ctx.drawImage(img,0,0,rect.width,rect.height);
+      img.src = old;
+    }
+  }
+  resizeCanvas(false);
+  window.addEventListener('resize', ()=>resizeCanvas(true));
+
+  function getSize(){ return {w: canvas.width/(window.devicePixelRatio||1), h: canvas.height/(window.devicePixelRatio||1)}; }
+
+  // ---------------- STATE ----------------
+  let brushSize = 4;
+  let symmetry = 1;
+  let noiseAmt = 30;
+  let mode = 'pen';
+  let drawing = false;
+  let strokeCount = 0;
+  let lastPt = null;
+  let flowParticles = [];
+  const undoStack = [];
+  const MAX_UNDO = 25;
+
+  // simple deterministic value-noise (no external libs)
+  function hashNoise(x,y){
+    const s = Math.sin(x*127.1 + y*311.7) * 43758.5453123;
+    return s - Math.floor(s);
+  }
+  function smoothNoise(x,y){
+    const xi=Math.floor(x), yi=Math.floor(y);
+    const xf=x-xi, yf=y-yi;
+    const a=hashNoise(xi,yi), b=hashNoise(xi+1,yi);
+    const c=hashNoise(xi,yi+1), d=hashNoise(xi+1,yi+1);
+    const u = xf*xf*(3-2*xf), v = yf*yf*(3-2*yf);
+    return a*(1-u)*(1-v) + b*u*(1-v) + c*(1-u)*v + d*u*v;
+  }
+  function fieldAngle(x,y,t){
+    const scale = 0.006;
+    const n = smoothNoise(x*scale, y*scale + t*0.05);
+    return n * Math.PI * 4;
+  }
+
+  // ---------------- UNDO ----------------
+  function pushUndo(){
+    try{
+      undoStack.push(canvas.toDataURL());
+      if(undoStack.length > MAX_UNDO) undoStack.shift();
+    }catch(e){}
+  }
+  function undo(){
+    if(undoStack.length === 0) return;
+    const data = undoStack.pop();
+    const img = new Image();
+    const {w,h} = getSize();
+    img.onload = ()=>{
+      ctx.clearRect(0,0,w,h);
+      ctx.fillStyle='#ffffff';
+      ctx.fillRect(0,0,w,h);
+      ctx.drawImage(img,0,0,w,h);
+    };
+    img.src = data;
+  }
+
+  // ---------------- SYMMETRY DRAW HELPER ----------------
+  function symmetricLine(x1,y1,x2,y2,size){
+    const {w,h} = getSize();
+    const cx = w/2, cy = h/2;
+    ctx.lineWidth = size;
+    ctx.strokeStyle = '#000000';
+    const n = Math.max(1, symmetry);
+    for(let i=0;i<n;i++){
+      const angle = (Math.PI*2/n) * i;
+      const p1 = rotateAround(x1,y1,cx,cy,angle);
+      const p2 = rotateAround(x2,y2,cx,cy,angle);
+      ctx.beginPath();
+      ctx.moveTo(p1.x,p1.y);
+      ctx.lineTo(p2.x,p2.y);
+      ctx.stroke();
+      if(n > 1){
+        // mirrored reflection for extra richness
+        const m1 = reflect(p1,cx,cy);
+        const m2 = reflect(p2,cx,cy);
+        ctx.beginPath();
+        ctx.moveTo(m1.x,m1.y);
+        ctx.lineTo(m2.x,m2.y);
+        ctx.stroke();
+      }
+    }
+  }
+  function rotateAround(x,y,cx,cy,angle){
+    const dx=x-cx, dy=y-cy;
+    return {
+      x: cx + dx*Math.cos(angle) - dy*Math.sin(angle),
+      y: cy + dx*Math.sin(angle) + dy*Math.cos(angle)
+    };
+  }
+  function reflect(p,cx,cy){
+    return { x: 2*cx - p.x, y: p.y };
+  }
+
+  // ---------------- POINTER DRAWING ----------------
+  function getPos(e){
+    const rect = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  }
+
+  function jitter(p){
+    if(noiseAmt <= 0) return p;
+    const amt = noiseAmt/100 * 14;
+    return {
+      x: p.x + (hashNoise(p.x*0.9, p.y*1.3) - 0.5) * amt,
+      y: p.y + (hashNoise(p.x*1.3, p.y*0.9) - 0.5) * amt
+    };
+  }
+
+  function startDraw(e){
+    e.preventDefault();
+    drawing = true;
+    pushUndo();
+    strokeCount++;
+    document.getElementById('strokeCount').textContent = strokeCount;
+    lastPt = getPos(e);
+    if(mode === 'flow'){
+      spawnFlowParticles(lastPt);
+    }
+  }
+  function moveDraw(e){
+    if(!drawing) return;
+    e.preventDefault();
+    const p = getPos(e);
+    const speed = lastPt ? Math.hypot(p.x-lastPt.x, p.y-lastPt.y) : 0;
+    pushScopeSample(speed);
+
+    if(mode === 'pen'){
+      const a = jitter(lastPt), b = jitter(p);
+      symmetricLine(a.x,a.y,b.x,b.y, brushSize);
+    } else if(mode === 'mirror'){
+      symmetricLine(lastPt.x,lastPt.y,p.x,p.y, brushSize);
+    } else if(mode === 'flow'){
+      spawnFlowParticles(p, Math.min(4, Math.ceil(speed/6)));
+    }
+    lastPt = p;
+  }
+  function endDraw(){
+    drawing = false;
+    lastPt = null;
+  }
+
+  canvas.addEventListener('mousedown', startDraw);
+  canvas.addEventListener('mousemove', moveDraw);
+  window.addEventListener('mouseup', endDraw);
+  canvas.addEventListener('touchstart', startDraw, {passive:false});
+  canvas.addEventListener('touchmove', moveDraw, {passive:false});
+  canvas.addEventListener('touchend', endDraw);
+
+  // ---------------- FLOW FIELD PARTICLES ----------------
+  function spawnFlowParticles(pos, count){
+    count = count || 3;
+    for(let i=0;i<count;i++){
+      flowParticles.push({
+        x: pos.x + (Math.random()-0.5)*6,
+        y: pos.y + (Math.random()-0.5)*6,
+        life: 40 + Math.random()*60
+      });
+    }
+    if(flowParticles.length > 500) flowParticles.splice(0, flowParticles.length-500);
+  }
+
+  let t = 0;
+  function animateFlow(){
+    t += 1;
+    if(flowParticles.length){
+      ctx.fillStyle = '#000000';
+      const next = [];
+      for(const p of flowParticles){
+        const ang = fieldAngle(p.x,p.y,t);
+        const nx = p.x + Math.cos(ang)*1.6;
+        const ny = p.y + Math.sin(ang)*1.6;
+        ctx.beginPath();
+        ctx.arc(nx,ny, Math.max(0.6, brushSize*0.18), 0, Math.PI*2);
+        ctx.fill();
+        p.x=nx; p.y=ny; p.life -= 1;
+        if(p.life > 0) next.push(p);
+      }
+      flowParticles = next;
+    }
+    requestAnimationFrame(animateFlow);
+  }
+  requestAnimationFrame(animateFlow);
+
+  // ---------------- GENERATE (autonomous drawing) ----------------
+  function generate(){
+    pushUndo();
+    const {w,h} = getSize();
+    const seeds = 5 + Math.floor(Math.random()*4);
+    let delay = 0;
+    for(let s=0; s<seeds; s++){
+      setTimeout(()=>{
+        walkGenerative(
+          Math.random()*w,
+          Math.random()*h,
+          200 + Math.random()*250
+        );
+      }, delay);
+      delay += 60;
+    }
+  }
+  function walkGenerative(x,y,steps){
+    let cx=x, cy=y;
+    const localT = Math.random()*1000;
+    ctx.lineWidth = 1 + Math.random()*brushSize*0.6;
+    ctx.strokeStyle = '#000000';
+    let i = 0;
+    function step(){
+      if(i++ >= steps) return;
+      const ang = fieldAngle(cx,cy, localT + i*0.4);
+      const nx = cx + Math.cos(ang)*3;
+      const ny = cy + Math.sin(ang)*3;
+      symmetricLine(cx,cy,nx,ny, ctx.lineWidth);
+      cx=nx; cy=ny;
+      const {w,h} = getSize();
+      if(cx<0||cx>w||cy<0||cy>h) return;
+      requestAnimationFrame(step);
+    }
+    step();
+  }
+
+  // ---------------- SCOPE (signature oscilloscope) ----------------
+  const scopeCanvas = document.getElementById('scopeCanvas');
+  const scopeCtx = scopeCanvas.getContext('2d');
+  let scopeSamples = new Array(80).fill(0);
+  function resizeScope(){
+    const r = scopeCanvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio||1;
+    scopeCanvas.width = r.width*dpr;
+    scopeCanvas.height = r.height*dpr;
+    scopeCtx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  resizeScope();
+  window.addEventListener('resize', resizeScope);
+
+  function pushScopeSample(v){
+    scopeSamples.push(Math.min(30, v));
+    if(scopeSamples.length > 80) scopeSamples.shift();
+  }
+  function drawScope(){
+    const r = scopeCanvas.getBoundingClientRect();
+    scopeCtx.clearRect(0,0,r.width,r.height);
+    scopeCtx.strokeStyle = '#000000';
+    scopeCtx.lineWidth = 1.2;
+    scopeCtx.beginPath();
+    const mid = r.height/2;
+    for(let i=0;i<scopeSamples.length;i++){
+      const x = (i/(scopeSamples.length-1)) * r.width;
+      const amp = scopeSamples[i]/30 * (mid-4);
+      const y = mid - amp * Math.sin(i*0.9 + t*0.15);
+      if(i===0) scopeCtx.moveTo(x,y); else scopeCtx.lineTo(x,y);
+    }
+    scopeCtx.stroke();
+    // slow decay so it doesn't freeze when idle
+    if(!drawing){
+      scopeSamples = scopeSamples.map(v=>v*0.94);
+    }
+    requestAnimationFrame(drawScope);
+  }
+  requestAnimationFrame(drawScope);
+
+  // ---------------- UI WIRING ----------------
+  const sizeSlider = document.getElementById('sizeSlider');
+  const symSlider = document.getElementById('symSlider');
+  const noiseSlider = document.getElementById('noiseSlider');
+  sizeSlider.addEventListener('input', e=>{
+    brushSize = +e.target.value;
+    document.getElementById('sizeVal').textContent = brushSize;
+  });
+  symSlider.addEventListener('input', e=>{
+    symmetry = +e.target.value;
+    document.getElementById('symVal').textContent = symmetry;
+  });
+  noiseSlider.addEventListener('input', e=>{
+    noiseAmt = +e.target.value;
+    document.getElementById('noiseVal').textContent = noiseAmt;
+  });
+
+  document.querySelectorAll('.modes button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.modes button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      mode = btn.dataset.mode;
+      document.getElementById('modeLabel').textContent = mode.toUpperCase();
+    });
+  });
+
+  document.getElementById('generateBtn').addEventListener('click', generate);
+  document.getElementById('undoBtn').addEventListener('click', undo);
+  document.getElementById('clearBtn').addEventListener('click', ()=>{
+    pushUndo();
+    const {w,h} = getSize();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0,0,w,h);
+  });
+  document.getElementById('saveBtn').addEventListener('click', ()=>{
+    const link = document.createElement('a');
+    link.download = 'ai-draw-' + Date.now() + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+
+})();
+</script>
+</body>
+</html>
